@@ -1,0 +1,5 @@
+web3>=7,<9
+py-solc-x>=2
+python-dotenv>=1
+requests>=2
+# anthropic>=0.40    # only if LLM_PROVIDER=anthropic

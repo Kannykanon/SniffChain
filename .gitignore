@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.env
+build/
+.idea/
+# Local index, caches and logs stay out; validation results are evidence and stay in.
+data/*
+!data/validation_base.csv
+!data/validation_base_scanner.csv
