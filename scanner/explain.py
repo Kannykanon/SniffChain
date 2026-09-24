@@ -86,7 +86,7 @@ def check(text: str, verdict: str) -> str | None:
 
 def template(r: ScanReport) -> str:
     lines = [f"Risk: {r.verdict}."]
-    lines += r.reasons or ["The scan didn't find anything that blocks selling or takes an unusual cut."]
+    lines += r.reasons or ["The scan found nothing that stops you selling this token back."]
     lines += r.notes
     return "\n".join(_clean(x, 300) for x in lines)
 

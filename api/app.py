@@ -33,7 +33,9 @@ app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ORIGINS", "*").
 _cache: dict[tuple[str, bool], tuple[float, dict]] = {}
 _cache_lock = threading.Lock()
 _scan_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SCANS)
-_index = {"synced_to": None, "error": None, "backfilled": False}
+_index = {"error": None, "backfilled": False}
+_active_scans = 0  # the indexer yields the RPC to users while this is above zero
+_active_lock = threading.Lock()
 
 
 def _follow_chain_head() -> None:
@@ -41,8 +43,8 @@ def _follow_chain_head() -> None:
     while True:
         try:
             db = indexer.connect()
-            indexer.sync(db, log=lambda _m: None)
-            _index.update(synced_to=indexer.synced_to(db), error=None, backfilled=True)
+            indexer.sync(db, log=lambda _m: None, yield_to=lambda: _active_scans > 0)
+            _index.update(error=None, backfilled=True)
             db.close()
         except Exception as e:  # RPC hiccups: log and retry, never kill the thread
             _index["error"] = str(e)[:200]
@@ -92,7 +94,13 @@ def present(r: report.ScanReport) -> dict:
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "chain_id": config.CHAIN_ID, "index": _index}
+    db = indexer.connect()
+    try:
+        synced = indexer.synced_to(db)
+    finally:
+        db.close()
+    return {"ok": True, "chain_id": config.CHAIN_ID, "active_scans": _active_scans,
+            "index": _index | {"synced_to": synced if synced >= 0 else None}}
 
 
 @app.get("/scan")
@@ -108,6 +116,9 @@ def scan_token(token: str = Query(..., description="token contract address on Ar
 
     if not _scan_slots.acquire(timeout=60):
         raise HTTPException(503, "The scanner is busy. Try again in a minute.")
+    global _active_scans
+    with _active_lock:
+        _active_scans += 1
     try:
         r = scan(token, sync_index=False)
     except ValueError as e:  # e.g. no contract at that address
@@ -115,6 +126,8 @@ def scan_token(token: str = Query(..., description="token contract address on Ar
     except Exception as e:
         raise HTTPException(502, f"Scan failed while reading Arc: {str(e)[:200]}")
     finally:
+        with _active_lock:
+            _active_scans -= 1
         _scan_slots.release()
 
     body = present(r)

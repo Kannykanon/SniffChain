@@ -90,7 +90,7 @@ class OpenAICompatibleProvider:
 
 
 def get_provider(name: str | None = None, model: str | None = None) -> LLMProvider:
-    name = (name or os.environ.get("LLM_PROVIDER") or "anthropic").lower()
+    name = (name or os.environ.get("LLM_PROVIDER") or "groq").lower()
     spec = PROVIDERS.get(name)
     if spec is None:
         raise LLMError(f"Unknown LLM_PROVIDER '{name}'. Options: {', '.join(PROVIDERS)}.")

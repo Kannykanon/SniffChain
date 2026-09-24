@@ -40,15 +40,19 @@ def synced_to(db) -> int:
     return row[0] if row else -1
 
 
-def sync(db, until: int | None = None, log=print) -> None:
+def sync(db, until: int | None = None, log=print, yield_to=lambda: False) -> None:
     """Pull Initialize logs from the last synced block to `until` (default: head), resizing chunks
-    adaptively: halve when the RPC says the request is too large, grow after successes."""
+    adaptively: halve when the RPC says the request is too large, grow after successes.
+    While yield_to() is true (e.g. a user's scan is running) it waits between chunks, so a long
+    backfill never competes with scans for the RPC's rate limit."""
     head = until or w3().eth.block_number
     start, chunk = max(synced_to(db) + 1, config.INDEX_START_BLOCK), 20_000
     streak = 0  # consecutive successes; growing after every success just re-hits the RPC's limit
     params = {"address": checksum(config.UNISWAP_V4_POOL_MANAGER), "topics": [config.V4_INITIALIZE_TOPIC]}
     t0, done0 = time.time(), start
     while start <= head:
+        while yield_to():
+            time.sleep(0.5)
         end = min(start + chunk - 1, head)
         try:
             logs = w3().eth.get_logs({**params, "fromBlock": start, "toBlock": end})
