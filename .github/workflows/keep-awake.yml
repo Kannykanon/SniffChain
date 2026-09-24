@@ -1,0 +1,21 @@
+# Pings the live app so Render's free instance doesn't sleep (it sleeps after 15 idle minutes, and a
+# cold start takes ~1 min and rebuilds the pool index).
+#
+# Runs 20h/day: Render's free instance hours are shared by every free service in the workspace
+# (historically 750/month). 24/7 would use ~744h in a 31-day month and could starve other services
+# (e.g. ArcGuard). 04:00-08:00 UTC is skipped as the quietest window worldwide.
+# GitHub may start scheduled runs a few minutes late, so every 10 min keeps well inside the limit.
+name: Keep app awake
+
+on:
+  schedule:
+    - cron: "*/10 0-3,8-23 * * *"
+  workflow_dispatch: {}   # "Run workflow" button, for a manual check
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /health
+        run: curl -fsS --max-time 120 --retry 3 --retry-delay 20 https://sniffchain.onrender.com/health
