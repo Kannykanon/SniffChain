@@ -43,6 +43,9 @@ CHAINS = {
                 Quote(NATIVE, "USDC", 18, (10, 100, 1000), "native")),
         UNISWAP_V4_POOL_MANAGER="0x8366a39cc670b4001a1121b8f6a443a643e40951",
         UNISWAP_V4_DEPLOY_BLOCK=1_948_056,
+        # Our HoneypotSimulator, deployed 2026-09-24 (block 22,507,996). The scanner itself injects the
+        # same bytecode via a code override; this public copy is for anyone else to call.
+        SIMULATOR_DEPLOYED="0x59dFDB2c3c15529CBD0E999Cca42357C103E5E10",
         # The pool index starts 2026-09-15 00:00 UTC, a day before public launch. The ~19M blocks
         # before it held only a handful of test pools and cost most of the backfill time.
         INDEX_START_BLOCK=20_900_406,

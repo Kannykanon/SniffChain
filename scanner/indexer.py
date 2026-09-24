@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER);
 
 def connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(exist_ok=True)
-    db = sqlite3.connect(DB_PATH)
+    # The API reads from request threads while a background thread writes: wait on locks, don't fail.
+    db = sqlite3.connect(DB_PATH, timeout=30)
     db.executescript(SCHEMA)
     return db
 

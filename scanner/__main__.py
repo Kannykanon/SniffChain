@@ -8,14 +8,16 @@ from web3 import Web3
 from . import chain, config, indexer, report, simulate, static
 
 
-def find_markets(token: str, log) -> list:
-    """Every pool/pair to trade `token` through, best first: v4 pools (Arc), then V2 pairs."""
+def find_markets(token: str, log, sync_index: bool = True) -> list:
+    """Every pool/pair to trade `token` through, best first: v4 pools (Arc), then V2 pairs.
+    sync_index=False when something else (the API's background thread) keeps the index current."""
     pools = []
     if config.INDEX_START_BLOCK is not None:
         db = indexer.connect()
         if indexer.synced_to(db) >= config.INDEX_START_BLOCK:
-            log("catching the pool index up to the chain head...")
-            indexer.sync(db, log=lambda _m: None)
+            if sync_index:
+                log("catching the pool index up to the chain head...")
+                indexer.sync(db, log=lambda _m: None)
             pools = indexer.pools_for(token, db)
         if not pools:
             # No index yet, or the token predates it: slow per-token log scan.
@@ -28,11 +30,11 @@ def find_markets(token: str, log) -> list:
     return sorted(pools + pairs, key=lambda m: m.liquidity == 0)
 
 
-def scan(token: str, log=lambda *_: None) -> report.ScanReport:
+def scan(token: str, log=lambda *_: None, sync_index: bool = True) -> report.ScanReport:
     info = chain.token_info(token)
     log("static checks...")
     st = static.analyse_token(token)
-    markets = find_markets(token, log)
+    markets = find_markets(token, log, sync_index)
     market = markets[0] if markets else None
     trips = []
     if market:

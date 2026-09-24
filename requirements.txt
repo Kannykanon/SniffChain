@@ -1,5 +1,6 @@
 web3>=7,<9
-py-solc-x>=2
 python-dotenv>=1
 requests>=2
+fastapi>=0.110
+uvicorn[standard]>=0.29
 # anthropic>=0.40    # only if LLM_PROVIDER=anthropic

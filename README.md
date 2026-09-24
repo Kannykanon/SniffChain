@@ -4,6 +4,13 @@ Free token risk checks for Arc mainnet (and Base, used for validation). Paste a 
 buy-then-sell simulation, real round-trip cost in dollars, and plain risk signals before you trade.
 Nothing is broadcast and no wallet is needed.
 
+**Live on Arc mainnet (chain 5042):**
+[HoneypotSimulator `0x59dFDB2c3c15529CBD0E999Cca42357C103E5E10`](https://explorer.arc.io/address/0x59dFDB2c3c15529CBD0E999Cca42357C103E5E10)
+(deploy tx [`0xa43cba3a…`](https://explorer.arc.io/tx/0xa43cba3ae4a102a240335169525df47485cbea5307cb68c5ecd7902b6d0cbd32),
+block 22,507,996). Its on-chain bytecode matches `build/HoneypotSimulator.json`. Anyone can use it: call
+`simulate(poolManager, poolKey, token, usdcAmount)` through `eth_call` with a balance override on the
+contract's address, and you get the buy and sell legs back without spending anything.
+
 ## How it works
 
 1. **Round-trip simulation.** `contracts/HoneypotSimulator.sol` buys through the token's Uniswap v4
@@ -52,6 +59,33 @@ blocks large sells (caught).
   several of them with liquidity. Through the trap pools, a $10 round trip lost 71–99%.
 - In a sweep of 400 recent normal-fee pools, all 307 with liquidity could be bought and sold. The
   risk on Arc today is mostly fee traps and taxes, not blocked sells.
+
+## Web app
+
+`api/app.py` (FastAPI) serves the API and the page in `web/index.html` from one process:
+
+```sh
+pip install -r requirements.txt
+uvicorn api.app:app --port 8000     # open http://localhost:8000
+```
+
+- `GET /scan?token=0x…&explain=true`: the report as display-ready JSON, cached for 5 minutes.
+- `GET /health`: status, including how far the background pool index has synced.
+
+The site scans Arc only. A background thread backfills the v4 pool index and then follows the chain
+head; until the first backfill finishes on a fresh disk, scans use the slower per-token log scan. At
+most 3 scans run at once to stay inside the RPC's rate limit. The page renders every on-chain string
+(token names, revert reasons) as text, never HTML.
+
+### Deploying
+
+1. **Contract:** `python scripts/deploy.py` (dry run), then `python scripts/deploy.py --send`. Uses
+   `DEPLOYER_PRIVATE_KEY` or `ATTESTER_PRIVATE_KEY` from `.env`; costs about 0.02 USDC.
+2. **Web app on Render:** New > Blueprint > this repo. `render.yaml` defines one free web service.
+   Set `GROQ_API_KEY`, and preferably `ARC_RPC_URL` to a provider endpoint (Alchemy, QuickNode, dRPC):
+   the public RPC rate-limits, and a free instance rebuilds the pool index after every restart.
+3. To host the page elsewhere (e.g. Vercel, like ArcGuard), set `<meta name="api-base">` in
+   `web/index.html` to the API's URL and `CORS_ORIGINS` on the API to the page's origin.
 
 ## Validation against honeypot.is on Base (2026-09-24)
 
