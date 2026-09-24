@@ -11,7 +11,7 @@ import json
 import re
 
 from .llm import LLMError, get_provider
-from .report import HIGH, LOW, MEDIUM, UNKNOWN, ScanReport, amount, fee_fraction
+from .report import HIGH, LOW, MEDIUM, TRAP_FEE_PIPS, UNKNOWN, ScanReport, amount, fee_fraction
 
 MAX_TOKENS = 1_500  # reasoning models spend part of this before answering
 LEVELS = (HIGH, MEDIUM, LOW, UNKNOWN)
@@ -27,6 +27,8 @@ Rules:
   use any other risk level word (HIGH, MEDIUM, LOW, UNKNOWN) anywhere else.
 - Then 2 to 4 short sentences: what the scan found and what it means for someone about to buy.
   Use only facts from the JSON. Don't invent numbers.
+- The round trips all went through one pool (pool_fee_percent). Fees of other pools listed in the
+  notes don't apply to those trades; never describe them as this token's fees.
 - No links, no addresses, no advice to buy or sell. Say "signals", not guarantees.
 - Plain text only, no markdown."""
 
@@ -53,6 +55,8 @@ def facts(r: ScanReport) -> dict:
          "reasons": [_clean(x) for x in r.reasons], "notes": [_clean(x) for x in r.notes]}
     if r.pool is not None:
         f["pool_fee_percent"] = round(fee_fraction(r.pool) * 100, 4)
+    f["other_pools_with_extreme_fees"] = sum(
+        1 for p in r.other_pools if fee_fraction(p) > TRAP_FEE_PIPS / 1_000_000)
     f["round_trips"] = [{
         "buy_size": amount(t.size, t.quote_symbol),
         "bought": t.buy_ok, "sold_back": t.sell_ok,

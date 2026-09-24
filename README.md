@@ -108,7 +108,8 @@ honeypots is a small sample, and honeypot.is is a reference, not ground truth. R
 `data/validation_base_scanner.csv`.
 
 The scanner also gives MEDIUM on 16 of the 60 for things honeypot.is doesn't look at: upgradeable
-proxies, active `mint()`, owner fee exemptions.
+proxies, active `mint()`, owner fee exemptions. (Counted before the MEDIUM tax threshold was lowered from 20% to
+10% of a round trip; HIGH verdicts, and so the agreement numbers, don't depend on it.)
 
 ## Arc RPC facts this depends on (checked 2026-09-23)
 

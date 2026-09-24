@@ -59,9 +59,11 @@ def assess(r: ScanReport) -> ScanReport:
         high.append(f"The main pool charges a {fee:.0%} LP fee on every trade.")
     traps = [p for p in r.other_pools if isinstance(p, Pool) and p.fee > TRAP_FEE_PIPS]
     if traps:
+        # Spell out that these are *other* pools: the simulated trades above didn't go through them.
         fees = ", ".join(f"{p.fee / 10_000:g}%" for p in traps)
-        r.notes.append(f"{len(traps)} other pool(s) for this token charge extreme LP fees ({fees}). "
-                       "Only trade through the pool listed above.")
+        r.notes.append(f"The simulated trades used a pool with a {fee:.2%} fee. Separately, {len(traps)} other "
+                       f"pool(s) for this token charge extreme LP fees ({fees}); trading through one of "
+                       "those would cost far more.")
     done = [t for t in r.trips if t.buy_ok]
     for t in r.trips:
         if t.buy_ok and not t.sell_ok:
@@ -75,8 +77,9 @@ def assess(r: ScanReport) -> ScanReport:
         extra = worst.round_trip_loss - 2 * fee
         if worst.round_trip_loss > 0.5:
             high.append(f"A {amount(worst.size, worst.quote_symbol)} buy-then-sell loses {worst.round_trip_loss:.0%}.")
-        elif extra > 0.2:
-            medium.append(f"Roughly {extra:.0%} of a round trip goes to taxes on top of the {fee:.2%} pool fee each way.")
+        elif extra > 0.1:
+            # Taxes this size are usually disclosed rather than hidden, but a buyer still loses a lot.
+            medium.append(f"Roughly {extra:.0%} of a round trip goes to token taxes, on top of the {fee:.2%} pool fee each way.")
         elif extra > 0.01:
             r.notes.append(f"About {extra:.0%} of a round trip goes to token taxes, on top of the {fee:.2%} pool fee each way.")
         small, large = min(sold, key=lambda t: t.size), max(sold, key=lambda t: t.size)
