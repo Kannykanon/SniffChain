@@ -1,0 +1,18 @@
+# Render blueprint: New > Blueprint > pick this repo. One web service serves the API and the page.
+services:
+  - type: web
+    name: sniffchain
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: ARC_RPC_URL
+        sync: false        # a provider URL is strongly recommended; the public RPC rate-limits
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false

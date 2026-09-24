@@ -1,0 +1,2 @@
+-r requirements.txt
+py-solc-x>=2         # recompiles contracts/ when they change; the API uses the committed build/ artifacts

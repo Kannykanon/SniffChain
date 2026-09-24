@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SniffChain · Arc token safety scanner</title>
+<meta name="description" content="Free buy-then-sell simulation for any token on Arc mainnet. See what you'd get back before you trade.">
+<!-- Empty = same origin (API and page served together). Set to the API's URL when hosting the page separately. -->
+<meta name="api-base" content="">
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1b1d1f; --muted: #5d6368; --line: #e3e4e1;
+    --accent: #2b59c3; --high: #b3261e; --high-bg: #fdecea; --medium: #8a5a00; --medium-bg: #fff4dc;
+    --low: #1e6b3a; --low-bg: #e6f4ea; --unknown: #4a4f55; --unknown-bg: #eceeef;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121416; --panel: #1b1e21; --text: #e8eaec; --muted: #9aa1a8; --line: #2c3035;
+      --accent: #7ea2ff; --high: #ff8a80; --high-bg: #3a1d1b; --medium: #ffcc66; --medium-bg: #36290f;
+      --low: #7fd99a; --low-bg: #16301f; --unknown: #c3c8cd; --unknown-bg: #26292d;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); margin: 0 0 24px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; }
+  input { flex: 1 1 320px; min-width: 0; padding: 12px 14px; font: 15px var(--mono); color: var(--text);
+          background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  input:focus-visible, button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  button { padding: 12px 20px; font: inherit; font-weight: 600; border: 0; border-radius: 10px;
+           background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: progress; }
+  .examples { margin: 10px 0 0; font-size: .9rem; color: var(--muted); }
+  .examples button { padding: 2px 8px; margin-left: 4px; font-size: .85rem; font-weight: 500;
+                     background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  .status { margin: 20px 0 0; color: var(--muted); min-height: 1.5em; }
+  .error { color: var(--high); }
+  section.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+                 padding: 20px; margin-top: 20px; }
+  .verdict { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .badge { font-weight: 800; letter-spacing: .04em; padding: 6px 14px; border-radius: 999px; }
+  .HIGH { color: var(--high); background: var(--high-bg); }
+  .MEDIUM { color: var(--medium); background: var(--medium-bg); }
+  .LOW { color: var(--low); background: var(--low-bg); }
+  .UNKNOWN { color: var(--unknown); background: var(--unknown-bg); }
+  .token-name { font-weight: 600; overflow-wrap: anywhere; }
+  .addr { font: 13px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  ul.reasons { margin: 14px 0 0; padding-left: 20px; }
+  ul.reasons li { margin: 4px 0; }
+  li.note { color: var(--muted); }
+  .explain { white-space: pre-line; margin: 0; }
+  .source { font-size: .8rem; color: var(--muted); margin-top: 8px; }
+  h2 { font-size: 1rem; margin: 0 0 12px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; font-size: .85rem; }
+  td.fail { color: var(--high); white-space: normal; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; font-size: .95rem; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  details summary { cursor: pointer; color: var(--accent); margin-top: 12px; }
+  footer { margin-top: 32px; font-size: .85rem; color: var(--muted); }
+  footer a { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SniffChain</h1>
+  <p class="lede">Paste a token address on Arc. We simulate buying it and selling it straight back, without
+    sending anything, and tell you what you'd actually get back.</p>
+
+  <form id="form" autocomplete="off">
+    <label for="token" hidden>Token address</label>
+    <input id="token" name="token" placeholder="0x… token address on Arc" spellcheck="false" required
+           pattern="^0x[0-9a-fA-F]{40}$" title="A 0x address with 40 hex characters">
+    <button id="go" type="submit">Scan</button>
+  </form>
+  <p class="examples">Try:
+    <button type="button" data-token="0x32b966b9f8b792fd30e051f8940900a66a858527">PUBLIC</button>
+    <button type="button" data-token="0x93d5b8c53ee763c2c4522bf0d958ce51af4360ae">REGI</button>
+  </p>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+
+  <div id="result" hidden>
+    <section class="card">
+      <div class="verdict">
+        <span class="badge" id="badge"></span>
+        <div>
+          <div class="token-name" id="tokenName"></div>
+          <div class="addr" id="tokenAddr"></div>
+        </div>
+      </div>
+      <ul class="reasons" id="reasons"></ul>
+    </section>
+
+    <section class="card" id="explainCard" hidden>
+      <h2>In plain English</h2>
+      <p class="explain" id="explain"></p>
+      <div class="source" id="explainSource"></div>
+    </section>
+
+    <section class="card" id="tripsCard" hidden>
+      <h2>Buy, then sell straight back</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>You put in</th><th>You get back</th><th>Lost</th><th>Gas</th></tr></thead>
+          <tbody id="trips"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Details</h2>
+      <dl id="details"></dl>
+      <details id="othersWrap" hidden>
+        <summary id="othersSummary"></summary>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Pool</th><th>LP fee</th><th>Liquidity</th></tr></thead>
+            <tbody id="others"></tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <footer>
+    Risk signals, not a guarantee: a token can change after a scan. Nothing here is financial advice.
+    Simulations run through <code>eth_call</code> on Arc mainnet; no transaction is ever sent and no
+    wallet is needed. <a href="https://github.com/Kannykanon/SniffChain">Source on GitHub</a>.
+  </footer>
+</main>
+
+<script>
+(() => {
+  const API = document.querySelector('meta[name="api-base"]').content.replace(/\/$/, "");
+  const $ = (id) => document.getElementById(id);
+  const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+
+  // Every value below may come from a token contract, so it's only ever set via textContent.
+  function el(tag, text, cls) {
+    const e = document.createElement(tag);
+    if (text != null) e.textContent = String(text);
+    if (cls) e.className = cls;
+    return e;
+  }
+  const short = (a) => a ? `${a.slice(0, 8)}…${a.slice(-6)}` : "";
+
+  function setStatus(text, isError) {
+    $("status").textContent = text;
+    $("status").classList.toggle("error", !!isError);
+  }
+
+  function render(d) {
+    const verdict = ["HIGH", "MEDIUM", "LOW", "UNKNOWN"].includes(d.verdict) ? d.verdict : "UNKNOWN";
+    $("badge").textContent = `${verdict} RISK`;
+    $("badge").className = `badge ${verdict}`;
+    const name = [d.token.name, d.token.symbol && `(${d.token.symbol})`].filter(Boolean).join(" ");
+    $("tokenName").textContent = name || "Unnamed token";
+    $("tokenAddr").textContent = d.token.address;
+
+    const reasons = $("reasons");
+    reasons.replaceChildren();
+    for (const r of d.reasons) reasons.append(el("li", r));
+    for (const n of d.notes) reasons.append(el("li", n, "note"));
+    if (!d.reasons.length && !d.notes.length) reasons.append(el("li", "Nothing unusual found.", "note"));
+
+    const ex = d.explanation;
+    $("explainCard").hidden = !ex;
+    if (ex) {
+      $("explain").textContent = ex.text;
+      $("explainSource").textContent = ex.source === "template"
+        ? "Written from the scan's findings directly." : `Worded by ${ex.source}. The risk level comes from the scan, not the model.`;
+    }
+
+    const trips = $("trips");
+    trips.replaceChildren();
+    $("tripsCard").hidden = !d.round_trips.length;
+    for (const t of d.round_trips) {
+      const tr = el("tr");
+      tr.append(el("td", t.size));
+      if (t.ok) {
+        tr.append(el("td", t.back), el("td", `${t.loss_percent}%`), el("td", t.gas));
+      } else {
+        const td = el("td", t.error, "fail");
+        td.colSpan = 3;
+        tr.append(td);
+      }
+      trips.append(tr);
+    }
+
+    const dl = $("details");
+    dl.replaceChildren();
+    const row = (k, v) => { if (v != null && v !== "") dl.append(el("dt", k), el("dd", v)); };
+    if (d.market) {
+      row("Traded through", `${d.market.kind} pool ${short(d.market.id)}`);
+      row("Pool fee", `${d.market.fee_percent}% per trade`);
+    }
+    if (d.hook) {
+      row("Pool hook", d.hook.can_take_from_swaps ? "Can take a cut of every swap" :
+          d.hook.can_block_swaps ? "Runs code on every swap" : "Doesn't touch swaps");
+      if (d.hook.upgradeable) row("Hook upgradeable", "Yes: its behaviour can change later");
+    }
+    const c = d.contract;
+    if (c.launchpad_clone_of) row("Contract", `Launchpad template (clone of ${short(c.launchpad_clone_of)})`);
+    if (c.upgradeable_implementation) row("Contract", "Upgradeable: its rules can be changed");
+    if (c.owner) row("Owner", c.ownership_renounced ? "Renounced" : short(c.owner));
+    const risky = Object.keys(c.risky_functions || {});
+    if (risky.length) row("Owner powers", risky.map((s) => s.split("(")[0]).join(", "));
+
+    const others = d.other_markets || [];
+    $("othersWrap").hidden = !others.length;
+    const traps = others.filter((o) => o.fee_percent > 10).length;
+    $("othersSummary").textContent = `${others.length} other pool${others.length === 1 ? "" : "s"} for this token` +
+      (traps ? ` (${traps} with LP fees over 10%)` : "");
+    const ot = $("others");
+    ot.replaceChildren();
+    for (const o of others) {
+      const tr = el("tr");
+      tr.append(el("td", short(o.id)), el("td", `${o.fee_percent}%`), el("td", o.has_liquidity ? "yes" : "empty"));
+      ot.append(tr);
+    }
+    $("result").hidden = false;
+  }
+
+  async function run(token) {
+    if (!ADDRESS.test(token)) { setStatus("That doesn't look like a token address (0x + 40 hex characters).", true); return; }
+    $("go").disabled = true;
+    $("result").hidden = true;
+    const started = Date.now();
+    const tick = setInterval(() => setStatus(
+      `Simulating trades on Arc mainnet… ${Math.round((Date.now() - started) / 1000)}s (usually 10–40s)`), 1000);
+    setStatus("Simulating trades on Arc mainnet…");
+    try {
+      const res = await fetch(`${API}/scan?token=${encodeURIComponent(token)}&explain=true`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || `The scanner returned ${res.status}.`);
+      render(body);
+      setStatus(body.cached ? "Result from the last few minutes." : `Scanned in ${Math.round((Date.now() - started) / 1000)}s.`);
+      history.replaceState(null, "", `?token=${token}`);
+    } catch (e) {
+      setStatus(e.message === "Failed to fetch"
+        ? "Couldn't reach the scanner. If it's been idle it may be waking up: try again in a minute." : e.message, true);
+    } finally {
+      clearInterval(tick);
+      $("go").disabled = false;
+    }
+  }
+
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); run($("token").value.trim()); });
+  for (const b of document.querySelectorAll("[data-token]")) {
+    b.addEventListener("click", () => { $("token").value = b.dataset.token; run(b.dataset.token); });
+  }
+  const fromUrl = new URLSearchParams(location.search).get("token");
+  if (fromUrl && ADDRESS.test(fromUrl)) { $("token").value = fromUrl; run(fromUrl); }
+})();
+</script>
+</body>
+</html>
