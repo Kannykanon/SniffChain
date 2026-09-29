@@ -10,3 +10,5 @@ build/*
 data/*
 !data/validation_base.csv
 !data/validation_base_scanner.csv
+# Pool index snapshot the server starts from (python -m scanner.indexer --snapshot).
+!data/pools_snapshot.tsv.gz

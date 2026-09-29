@@ -1,4 +1,5 @@
 """Runs HoneypotSimulator inside eth_call with state overrides; nothing is broadcast or paid."""
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -127,6 +128,12 @@ def round_trip(market: Pool | V2Pair, token: str, size: float) -> RoundTrip:
     return parse_legs(size, quote.symbol, buy, sell)
 
 
+_gas_price = (0.0, 0)  # (fetched at, wei): one read per minute, not one per reported trade
+
+
 def gas_cost(gas: int) -> float:
     """Gas cost in the chain's native unit (on Arc that's USDC, i.e. dollars)."""
-    return gas * w3().eth.gas_price / 10 ** config.NATIVE_DECIMALS
+    global _gas_price
+    if time.time() - _gas_price[0] > 60:
+        _gas_price = (time.time(), w3().eth.gas_price)
+    return gas * _gas_price[1] / 10 ** config.NATIVE_DECIMALS

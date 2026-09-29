@@ -1,4 +1,5 @@
 """RPC access, token metadata, and Uniswap v4 pool discovery on Arc."""
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -18,8 +19,9 @@ POOL_MANAGER_ABI = [
 @lru_cache(maxsize=1)
 def w3() -> Web3:
     # The public RPC answers bursts with HTTP 429, so back off and retry (all methods here are reads).
-    retry = ExceptionRetryConfiguration(errors=(ConnectionError, HTTPError, Timeout), retries=8, backoff_factor=0.5)
-    return Web3(Web3.HTTPProvider(config.RPC_URL, request_kwargs={"timeout": 30},
+    # 5 retries wait ~15s in total; more just leaves a user staring at a spinner before the error.
+    retry = ExceptionRetryConfiguration(errors=(ConnectionError, HTTPError, Timeout), retries=5, backoff_factor=0.5)
+    return Web3(Web3.HTTPProvider(config.RPC_URL, request_kwargs={"timeout": 20},
                                   exception_retry_configuration=retry))
 
 
@@ -160,17 +162,18 @@ def find_v4_pools(token: str, from_block: int, progress=None) -> list[Pool]:
     """All v4 pools pairing `token` with a quote asset, initialised at or after from_block."""
     latest = w3().eth.block_number
     quote_addrs = {q.address for q in config.QUOTES}
+    pm = checksum(config.UNISWAP_V4_POOL_MANAGER)
+    # A token can be currency0 or currency1, and topics can't be OR-ed across positions.
+    queries = [({"address": pm, "topics": topics}, start, min(start + config.MAX_LOG_RANGE - 1, latest))
+               for start in range(from_block, latest + 1, config.MAX_LOG_RANGE)
+               for topics in ([config.V4_INITIALIZE_TOPIC, None, _topic(token)],
+                              [config.V4_INITIALIZE_TOPIC, None, None, _topic(token)])]
+    if progress and queries:
+        progress(from_block, latest, latest)
     pools: list[Pool] = []
-    start = from_block
-    while start <= latest:
-        end = min(start + config.MAX_LOG_RANGE - 1, latest)
-        if progress:
-            progress(start, end, latest)
-        # A token can be currency0 or currency1, and topics can't be OR-ed across positions.
-        for topics in ([config.V4_INITIALIZE_TOPIC, None, _topic(token)],
-                       [config.V4_INITIALIZE_TOPIC, None, None, _topic(token)]):
-            params = {"address": checksum(config.UNISWAP_V4_POOL_MANAGER), "topics": topics}
-            for log in get_logs(params, start, end):
+    with ThreadPoolExecutor(4) as ex:
+        for logs in ex.map(lambda q: get_logs(*q), queries):
+            for log in logs:
                 c0 = "0x" + log["topics"][2].hex()[-40:]
                 c1 = "0x" + log["topics"][3].hex()[-40:]
                 if not ({c0, c1} & quote_addrs):
@@ -180,10 +183,15 @@ def find_v4_pools(token: str, from_block: int, progress=None) -> list[Pool]:
                 pools.append(Pool("0x" + log["topics"][1].hex().removeprefix("0x"),
                                   checksum(c0), checksum(c1), fee, spacing, checksum(hooks),
                                   log["blockNumber"]))
-        start = end + 1
-    for p in pools:
-        p.liquidity = pool_liquidity(p.pool_id)
+    read_liquidity(pools)
     return sorted(pools, key=lambda p: p.liquidity, reverse=True)
+
+
+def read_liquidity(pools: list[Pool]) -> None:
+    """Fill in each pool's live liquidity, a few reads at a time (a token can have a dozen pools)."""
+    with ThreadPoolExecutor(4) as ex:
+        for p, liq in zip(pools, ex.map(lambda p: pool_liquidity(p.pool_id), pools)):
+            p.liquidity = liq
 
 
 def pool_liquidity(pool_id: str) -> int:

@@ -36,7 +36,8 @@ contract's address, and you get the buy and sell legs back without spending anyt
 
 ```sh
 python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Windows path
-python -m scanner.indexer              # one-time: index every v4 pool on Arc (~30 min on the public RPC)
+python -m scanner.indexer              # index every v4 pool on Arc (catches up from the shipped snapshot)
+python -m scanner.indexer --snapshot   # refresh data/pools_snapshot.tsv.gz, which the server starts from
 python -m scanner 0x32b966b9f8b792fd30e051f8940900a66a858527
 python -m scanner <token> --json
 python -m scanner <token> --explain                # plain-English explanation via LLM_PROVIDER
@@ -72,9 +73,11 @@ uvicorn api.app:app --port 8000     # open http://localhost:8000
 - `GET /scan?token=0x…&explain=true`: the report as display-ready JSON, cached for 5 minutes.
 - `GET /health`: status, including how far the background pool index has synced.
 
-The site scans Arc only. A background thread backfills the v4 pool index and then follows the chain
-head; until the first backfill finishes on a fresh disk, scans use the slower per-token log scan. At
-most 3 scans run at once to stay inside the RPC's rate limit. The page renders every on-chain string
+The site scans Arc only. On boot a background thread restores the pool index from
+`data/pools_snapshot.tsv.gz` (seconds), catches up to the chain head and follows it. Scans search the
+few blocks the index hasn't reached yet themselves; if it is far behind (an old snapshot), they wait up
+to 90s for it first. The public RPC caps `eth_getLogs` at 10,000 blocks (~80 minutes of Arc), so
+refresh the snapshot now and then to keep restarts quick. At most 3 scans run at once to stay inside the RPC's rate limit. The page renders every on-chain string
 (token names, revert reasons) as text, never HTML.
 
 ### Deploying
@@ -83,7 +86,10 @@ most 3 scans run at once to stay inside the RPC's rate limit. The page renders e
    `DEPLOYER_PRIVATE_KEY` or `ATTESTER_PRIVATE_KEY` from `.env`; costs about 0.02 USDC.
 2. **Web app on Render:** New > Blueprint > this repo. `render.yaml` defines one free web service.
    Set `GROQ_API_KEY`, and preferably `ARC_RPC_URL` to a provider endpoint (Alchemy, QuickNode, dRPC):
-   the public RPC rate-limits, and a free instance rebuilds the pool index after every restart.
+   the public RPC rate-limits. A free instance sleeps after 15 idle minutes and loses its disk on
+   every restart; `.github/workflows/keep-awake.yml` pings it, but GitHub delays scheduled runs by
+   hours, so an external pinger (UptimeRobot, cron-job.org) hitting `/health` every 5-10 minutes is
+   what actually keeps it awake.
 3. To host the page elsewhere (e.g. Vercel, like ArcGuard), set `<meta name="api-base">` in
    `web/index.html` to the API's URL and `CORS_ORIGINS` on the API to the page's origin.
 

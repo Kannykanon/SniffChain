@@ -51,7 +51,7 @@ CHAINS = {
         INDEX_START_BLOCK=20_900_406,
         # (factory, fee in basis points). Arc's V2 forks aren't added yet.
         V2_FACTORIES=(),
-        MAX_LOG_RANGE=100_000,
+        MAX_LOG_RANGE=10_000,  # the public RPC rejects eth_getLogs over 10,000 blocks (checked 2026-09-29)
     ),
     "base": dict(
         CHAIN_ID=8453,

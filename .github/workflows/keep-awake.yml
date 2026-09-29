@@ -4,7 +4,8 @@
 # Runs 20h/day: Render's free instance hours are shared by every free service in the workspace
 # (historically 750/month). 24/7 would use ~744h in a 31-day month and could starve other services
 # (e.g. ArcGuard). 04:00-08:00 UTC is skipped as the quietest window worldwide.
-# GitHub may start scheduled runs a few minutes late, so every 10 min keeps well inside the limit.
+# In practice GitHub throttles this schedule to one run every few hours (seen 2026-09-28/29), so it's
+# only a backstop: an external pinger (UptimeRobot, cron-job.org) on /health is what keeps it awake.
 name: Keep app awake
 
 on:

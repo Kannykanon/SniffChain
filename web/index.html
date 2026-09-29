@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SniffChain · Arc token safety scanner</title>
-<meta name="description" content="Free buy-then-sell simulation for any token on Arc mainnet. See what you'd get back before you trade.">
+<meta name="description" content="Free buy-then-sell check for any token on Arc mainnet, against its live pools. See what you'd get back before you trade.">
 <!-- Empty = same origin (API and page served together). Set to the API's URL when hosting the page separately. -->
 <meta name="api-base" content="">
 <style>
@@ -72,8 +72,8 @@
 <body>
 <main>
   <h1>SniffChain</h1>
-  <p class="lede">Paste a token address on Arc. We simulate buying it and selling it straight back, without
-    sending anything, and tell you what you'd actually get back.</p>
+  <p class="lede">Paste a token address on Arc mainnet. We test a buy and an immediate sell against its live
+    pools and show what you'd actually get back. No wallet needed.</p>
 
   <form id="form" autocomplete="off">
     <label for="token" hidden>Token address</label>
@@ -132,7 +132,7 @@
 
   <footer>
     Risk signals, not a guarantee: a token can change after a scan. Nothing here is financial advice.
-    Simulations run through <code>eth_call</code> on Arc mainnet; no transaction is ever sent and no
+    Checks read live Arc mainnet state through <code>eth_call</code>; no transaction is ever sent and no
     wallet is needed. <a href="https://github.com/Kannykanon/SniffChain">Source on GitHub</a>.
   </footer>
 </main>
@@ -235,8 +235,8 @@
     $("result").hidden = true;
     const started = Date.now();
     const tick = setInterval(() => setStatus(
-      `Simulating trades on Arc mainnet… ${Math.round((Date.now() - started) / 1000)}s (usually 10–40s)`), 1000);
-    setStatus("Simulating trades on Arc mainnet…");
+      `Checking live Arc mainnet pools… ${Math.round((Date.now() - started) / 1000)}s`), 1000);
+    setStatus("Checking live Arc mainnet pools…");
     try {
       const res = await fetch(`${API}/scan?token=${encodeURIComponent(token)}&explain=true`);
       const body = await res.json().catch(() => ({}));

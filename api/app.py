@@ -3,9 +3,9 @@
     uvicorn api.app:app --port 8000        # then open http://localhost:8000
 
 Arc only: the scanner's chain config is process-wide, and Base exists for validation, not users.
-A background thread keeps the v4 pool index at the chain head; request threads only read it. Until
-the first backfill finishes (a few minutes on a fresh disk), scans fall back to the slower per-token
-log scan, so the service works from the first second.
+A background thread restores the shipped pool-index snapshot (seconds), then keeps the index at the
+chain head; request threads only read it. Blocks the index hasn't reached yet are searched per token,
+so scans are complete and fast from the first minute even on a throwaway disk.
 """
 import os
 import threading
@@ -19,10 +19,14 @@ from web3 import Web3
 
 from scanner import config, explain, indexer, report
 from scanner.__main__ import scan
-from scanner.chain import Pool
+from scanner.chain import Pool, w3
 from scanner.simulate import gas_cost
 
 CACHE_SECONDS = 300
+# A scan searches blocks the index hasn't reached yet itself, at 2 calls per 10k blocks. Past this gap
+# (e.g. right after a restart from an old snapshot) it waits for the indexer, which needs half the calls.
+MAX_INDEX_GAP = 50_000
+INDEX_WAIT_SECONDS = 90
 MAX_CONCURRENT_SCANS = 3  # each scan makes dozens of RPC calls; protect the RPC's rate limit
 PAGE = Path(__file__).resolve().parent.parent / "web" / "index.html"
 
@@ -39,7 +43,13 @@ _active_lock = threading.Lock()
 
 
 def _follow_chain_head() -> None:
-    """Backfill once, then keep the pool index within a few blocks of the head, forever."""
+    """Restore the snapshot, then keep the pool index within a few blocks of the head, forever."""
+    try:
+        db = indexer.connect()
+        indexer.restore_snapshot(db)
+        db.close()
+    except Exception as e:  # a bad snapshot only costs speed: the sync below still works
+        _index["error"] = f"snapshot: {str(e)[:200]}"
     while True:
         try:
             db = indexer.connect()
@@ -92,6 +102,20 @@ def present(r: report.ScanReport) -> dict:
     }
 
 
+def _wait_for_index() -> None:
+    """Give a catching-up indexer a head start. Waiting scans don't count as active, so it won't yield."""
+    deadline = time.time() + INDEX_WAIT_SECONDS
+    while time.time() < deadline:
+        db = indexer.connect()
+        try:
+            synced = indexer.synced_to(db)
+        finally:
+            db.close()
+        if synced >= 0 and w3().eth.block_number - synced <= MAX_INDEX_GAP:
+            return
+        time.sleep(2)
+
+
 @app.get("/health")
 def health() -> dict:
     db = indexer.connect()
@@ -114,6 +138,7 @@ def scan_token(token: str = Query(..., description="token contract address on Ar
     if hit and time.time() - hit[0] < CACHE_SECONDS:
         return hit[1] | {"cached": True}
 
+    _wait_for_index()
     if not _scan_slots.acquire(timeout=60):
         raise HTTPException(503, "The scanner is busy. Try again in a minute.")
     global _active_scans
